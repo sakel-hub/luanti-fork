@@ -78,6 +78,10 @@ jobs:
           export DEPS_DIR=/Users/Shared/macos${osver}_${arch}_deps
           export USE_XCODE=no
           ../util/ci/build_macos.sh
+          # Re-sign the bundle ad-hoc with LuaJIT entitlements to fix corrupted signature from fixup_bundle
+          codesign --force --deep -s - \
+            --entitlements ../misc/macos/entitlements/release.entitlements \
+            ./macos/luanti.app
 
       - name: Build and Archive with Xcode
         if: ${{matrix.xcode == 'yes'}}
@@ -105,18 +109,16 @@ jobs:
         run: |
           diff -rd ./build/macos/luanti.app/Contents/Resources ./build_xcode/build/${build_type}/luanti.app/Contents/Resources || exit 1
           diff -rd ./build/macos/luanti.app/Contents/Resources ./build_xcode/luanti.xcarchive/Products/Applications/luanti.app/Contents/Resources || exit 1
-      # Zipping the built .app preserves permissions on the contained files,
-      #   which the GitHub artifact pipeline would otherwise strip away.
-      - name: CPack
+
+      # Using ditto preserves extended attributes, symlinks, POSIX permissions, and code signatures
+      - name: Package App Bundle
         run: |
-          cd build
-          rm -rf macos
-          cpack -G ZIP -B macos
-          set -- macos/*.zip
-          mv "$1" "${1%.zip}${osver}-${arch}.zip"
+          mkdir -p ./build/dist
+          ditto -c -k --keepParent ./build/macos/luanti.app "./build/dist/luanti-${osver}-${arch}.zip"
 
       - name: Upload
         uses: actions/upload-artifact@v7
         with:
+          name: luanti-macos-${{ matrix.arch }}
           archive: false
-          path: ./build/macos/*.zip
+          path: ./build/dist/*.zip
